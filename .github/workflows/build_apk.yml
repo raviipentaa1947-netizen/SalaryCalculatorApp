@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build and Sign Android APK
 
 on:
   workflow_dispatch:
@@ -17,14 +17,27 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Make Gradlew Executable
-        run: chmod +x gradlew
+      - name: Set up Gradle
+        uses: gradle/gradle-build-action@v2
 
       - name: Build APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: gradle assembleRelease --stacktrace
 
-      - name: Upload APK
+      - name: Download apksigner
+        run: sudo apt-get update && sudo apt-get install -y apksigner zipalign
+
+      - name: Sign APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > my-release-key.jks
+          zipalign -v -p 4 app/build/outputs/apk/release/app-release-unsigned.apk app-release-unsigned-aligned.apk
+          apksigner sign --ks my-release-key.jks --ks-pass pass:$KEYSTORE_PASSWORD --key-pass pass:$KEY_PASSWORD --out app-release-signed.apk app-release-unsigned-aligned.apk
+
+      - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: SalaryCalculatorApp-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: SalaryCalculatorApp-Signed-APK
+          path: app-release-signed.apk
